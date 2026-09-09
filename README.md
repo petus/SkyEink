@@ -4,6 +4,8 @@ Přelety družic, oblačnost a polohy planet na ePaper displeji Inkplate 5 Gen2.
 
 Rozhraní je česky nebo anglicky, přepíná se v nastavení.
 
+Navrhl [chiptron.cz](https://chiptron.cz) a Claude AI.
+
 ## Funkce
 
 - Předpověď viditelných přeletů na nejbližší noc z katalogu Celestrak.
