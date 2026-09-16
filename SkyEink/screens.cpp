@@ -628,12 +628,20 @@ void status(time_t now, const char* reason) {
   ui::drawHeader(f, T(S_STATUS), now);
 
   const Metrics& m = metrics();
-  int16_t y = (int16_t)(f.content.y + textAscent());
 
+  // The font has to be selected before the baseline is worked out. It used to
+  // be the other way round, so the fault heading was placed on the baseline of
+  // a smaller font and its top edge ended up above the content area, right on
+  // the header rule.
+  int16_t y;
   if (reason) {
     setFont(FONT_L);
+    y = (int16_t)(f.content.y + textAscent());
     ui::text(f.content.x, y, reason, ALIGN_LEFT, INK_BLACK);
     y = (int16_t)(y + textHeight() + m.gap);
+  } else {
+    setFont(FONT_M);
+    y = (int16_t)(f.content.y + textAscent());
   }
 
   setFont(FONT_M);

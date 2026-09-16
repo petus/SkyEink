@@ -39,6 +39,11 @@ const double J2  = 1.08262668e-3;
 const int  FILTER_STEP   = 600;
 const double FILTER_SLACK = 6.0;     // extra degrees so the filter is not tight
 
+// Beyond this the SGP4 prediction drifts far enough that the pass time would
+// be wrong by minutes. Such objects are skipped one by one instead of
+// invalidating the whole catalogue.
+const long MAX_EPOCH_AGE_S = 14L * 86400L;
+
 Sgp4 sat;
 gp::Rec cur;
 bool    haveTrack = false;
@@ -221,7 +226,7 @@ int compute(time_t around, ProgressFn cb) {
 
   const double nightHours = (double)(darkEnd - darkStart) / 3600.0;
   uint32_t t0 = millis();
-  uint16_t tried = 0, skipped = 0;
+  uint16_t tried = 0, skipped = 0, stale = 0;
 
   for (uint16_t i = 0; i < n; i++) {
     if (cb && (i % 16) == 0)
@@ -234,6 +239,10 @@ int compute(time_t around, ProgressFn cb) {
 
     if (!gp::get(i, cur)) continue;
     if (cur.mm <= 0.0f) continue;
+
+    // Elements that are too old are dropped individually.
+    long epochAge = (long)(around - (time_t)cur.epoch);
+    if (epochAge > MAX_EPOCH_AGE_S) { stale++; continue; }
 
     if (!planePossible(cur, darkStart, darkEnd)) { skipped++; continue; }
     tried++;
@@ -280,7 +289,8 @@ int compute(time_t around, ProgressFn cb) {
   gp::close();
 
   LOGF("prelety: okno %.1f h, propagovano %u, predfiltrem vyrazeno %u, "
-       "nalezeno %u, %lu ms", nightHours, tried, skipped, rt.passCount,
+       "zastaralych %u, nalezeno %u, %lu ms",
+       nightHours, tried, skipped, stale, rt.passCount,
        (unsigned long)elapsed);
 
   if (cb) cb(T(S_P_DONE), 100);

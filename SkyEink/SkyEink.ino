@@ -512,7 +512,12 @@ void setup() {
 
   // Faults take precedence over content.
   const char* fault = nullptr;
-  long gpAgeDays = rt.gpEpochOldest ? (long)(now - rt.gpEpochOldest) / 86400 : 0;
+  // Rozhoduje stáří stažení, ne epocha nejstaršího objektu v katalogu.
+  // Celestrak neaktualizuje každý objekt denně: u vyhořelých stupňů a
+  // úlomků jsou elementy běžně týden i dva staré, aniž by to o katalogu
+  // jako celku cokoli vypovídalo. Podmínka na nejstarší epochu proto
+  // shazovala celou obrazovku kvůli jedinému zapomenutému objektu.
+  long gpAgeDays = rt.gpFetchedAt ? (long)(now - rt.gpFetchedAt) / 86400 : 0;
   if (rt.storeFull)           fault = T(S_FAULT_STORE);
   else if (rt.netFailStreak >= 2) fault = T(S_FAULT_WIFI);
   else if (gpAgeDays > 14)    fault = T(S_FAULT_OLD);
