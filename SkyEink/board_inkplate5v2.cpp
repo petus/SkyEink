@@ -171,7 +171,7 @@ void dispEnd() { ink.einkOff(); }
 
 bool dispSetMode(DrawMode m) {
   if (m == mode) return true;
-  ink.setDisplayMode(m == MODE_GRAY ? INKPLATE_3BIT : INKPLATE_1BIT);
+  ink.selectDisplayMode(m == MODE_GRAY ? INKPLATE_3BIT : INKPLATE_1BIT);
   mode = m;
   return true;
 }
@@ -436,15 +436,15 @@ bool timeValid() { return timeNow() != 0; }
 
 time_t timeNow() {
   TzUtc guard;
-  if (!ink.rtcIsSet()) return 0;
-  uint32_t e = ink.rtcGetEpoch();
+  if (!ink.rtc.isSet()) return 0;
+  uint32_t e = ink.rtc.getEpoch();
   return e > 1735689600UL ? (time_t)e : 0;
 }
 
 void timeSet(time_t utc) {
   {
     TzUtc guard;
-    ink.rtcSetEpoch((uint32_t)utc);
+    ink.rtc.setEpoch((uint32_t)utc);
   }
   struct timeval tv = {(time_t)utc, 0};
   settimeofday(&tv, nullptr);

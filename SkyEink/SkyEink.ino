@@ -182,12 +182,27 @@ void showProgress(const char* stage, uint8_t pct) {
 // Some ISPs block UDP port 123, which is what NTP runs on. The Date header
 // of an HTTPS response gets through wherever the data itself does.
 bool syncTime() {
-  if (hal::netSyncTime("tik.cesnet.cz", "pool.ntp.org", "time.google.com", 8000)) {
-    LOGS("cas: NTP ok");
-    rt.lastNtpAt = hal::timeNow();
-    return true;
+  // Some ISPs block UDP port 123 outright. Retrying NTP on every sync then
+  // costs the full timeout for nothing, so after three failures in a row it
+  // is skipped and the HTTPS route is used directly. Every twentieth boot
+  // tries again, in case the network has since been fixed.
+  bool tryNtp = rt.ntpFailStreak < 3 || (rt.bootCount % 20) == 0;
+
+  if (tryNtp) {
+    if (hal::netSyncTime("tik.cesnet.cz", "pool.ntp.org", "time.google.com",
+                         8000)) {
+      LOGS("cas: NTP ok");
+      rt.ntpFailStreak = 0;
+      rt.lastNtpAt = hal::timeNow();
+      return true;
+    }
+    if (rt.ntpFailStreak < 255) rt.ntpFailStreak++;
+    LOGF("cas: NTP selhalo (%u. v rade), zkousim hlavicku Date pres HTTPS",
+         rt.ntpFailStreak);
+  } else {
+    LOGF("cas: NTP se preskakuje po %u selhanich, rovnou hlavicka Date",
+         rt.ntpFailStreak);
   }
-  LOGS("cas: NTP selhalo, zkousim hlavicku Date pres HTTPS");
 
   static const char* URLS[] = {
     "https://api.open-meteo.com/v1/forecast?latitude=0&longitude=0",
@@ -215,8 +230,15 @@ bool inQuiet(time_t t) {
   return m >= cfg.quietFromMin || m < cfg.quietToMin;   // wraps past midnight
 }
 
-// Fetches whatever is stale and recomputes the passes. True on success.
-bool fullSync(time_t now, bool withGp) {
+// Fetches whatever is stale. Returns true on success, and sets gpRefreshed
+// when new orbital elements actually arrived.
+//
+// The two are not the same thing, and conflating them was expensive: a
+// weather-only refresh reported success, which was taken as a reason to
+// recompute the passes. That threw away a perfectly good list and spent
+// another minute rebuilding it, four times a day.
+bool fullSync(time_t now, bool withGp, bool& gpRefreshed) {
+  gpRefreshed = false;
   showProgress(T(S_P_WIFI), 2);
 
   if (!hal::netConnect(cfg.ssid, cfg.pass, 20000)) {
@@ -258,6 +280,7 @@ bool fullSync(time_t now, bool withGp) {
       rt.gpCount       = (uint16_t)n;
       rt.gpEpochOldest = gp::oldestEpoch();
       gpOk = true;
+      gpRefreshed = true;
     } else if (n == GP_ERR_403) {
       // Celestrak says the data has not changed since last time. Keep the
       // existing cache and do not ask again today.
@@ -457,6 +480,30 @@ void setup() {
     }
   }
 
+  // A cold start wipes the RTC memory, so the device forgets it has a
+  // catalogue even though the card still holds one. Reading the companion
+  // record back turns a reflash or a battery swap from a full download into
+  // nothing at all.
+  if (!rt.gpFetchedAt) {
+    time_t fetched = 0, oldest = 0;
+    uint16_t count = 0;
+    // A record with a nonsense timestamp is worse than none: it would make a
+    // stale catalogue look fresh. Anything before 2025 is rejected.
+    if (gp::cacheInfo(fetched, count, oldest) && fetched > 1735689600) {
+      rt.gpFetchedAt   = fetched;
+      rt.gpCount       = count;
+      rt.gpEpochOldest = oldest;
+      LOGF("cache na karte: %u objektu, stazeno pred %ld h",
+           count, (long)((now - fetched) / 3600));
+    }
+  }
+
+  // The same applies to the pass list. Recomputing a night that has already
+  // been worked out costs a full minute for nothing.
+  if (!rt.passCount && passes::loadPasses(now))
+    LOGF("prelety z karty: %u zaznamu, plati do %ld min",
+         rt.passCount, (long)((rt.passesValidTo - now) / 60));
+
   float volts = hal::batteryVolts();
   bool battCritical = (volts == volts) && volts < BATT_CRITICAL;
   LOGF("baterie %.2f V, %u %%%s", (double)volts, ui::battPercent(volts),
@@ -483,7 +530,11 @@ void setup() {
        needGp, needWeather, needPasses, rt.gpCount, rt.passCount);
 
   if ((needGp || needWeather) && !battCritical) {
-    if (fullSync(now, needGp)) needPasses = true;
+    bool gpRefreshed = false;
+    fullSync(now, needGp, gpRefreshed);
+    // Only a fresh catalogue invalidates the list. New clouds do not move
+    // satellites.
+    if (gpRefreshed) needPasses = true;
     now = hal::timeNow();
   }
 
@@ -504,8 +555,9 @@ void setup() {
     for (uint8_t i = 0; i < rt.passCount; i++) {
       const PassRec& p = rt.passes[i];
       struct tm lt; localtime_r(&p.tRise, &lt);
-      LOGF("  %02d:%02d  %-16s max %2d deg  mag %+.1f  %ld min",
-           lt.tm_hour, lt.tm_min, p.name, p.elMax, (double)p.mag,
+      LOGF("  %02d:%02d  %-16s max %2d deg  az %3d>%3d>%3d  mag %+.1f  %ld min",
+           lt.tm_hour, lt.tm_min, p.name, p.elMax,
+           p.azRise, p.azMax, p.azSet, (double)p.mag,
            (long)(p.tSet - p.tRise) / 60);
     }
   }

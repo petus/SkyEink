@@ -23,8 +23,14 @@ void cfgDefaults(SkyConfig& c) {
   strncpy(c.tz, "CET-1CEST,M3.5.0,M10.5.0/3", sizeof(c.tz) - 1);
 
   c.groups      = GRP_VISUAL | GRP_STATIONS | GRP_LAST30;
-  c.maxObjects  = 1200;
-  c.magLimit    = 3.0f;
+  // Every object costs about 170 ms of SGP4 over one night, so the cap is
+  // what sets how long the device stays awake. At 1200 the computation ran
+  // for three minutes and most of the extra objects were spent rockets
+  // around magnitude +1.5, which nobody goes outside for.
+  c.maxObjects  = 600;
+  // Magnitude +2 is roughly a mid brightness star. Fainter than that and the
+  // object is only worth chasing with binoculars.
+  c.magLimit    = 2.0f;
   c.minElevDeg  = 20;
   // Above 15.2 revolutions per day the orbit is below roughly 500 km. For
   // Starlink that picks out fresh trains, still raising and still bright.
@@ -38,6 +44,26 @@ void cfgDefaults(SkyConfig& c) {
   c.sunSwitchDeg = 6;
   c.syncHourUtc  = 3;      // roughly 04:30 to 05:00 local time
   c.lang         = 0;      // Czech
+
+  // Starting brightness table. The values are the ones commonly quoted for
+  // these objects; the order matters because the first match wins.
+  static const MagRule SEED[] = {
+    {"ISS",      -1.8f},
+    {"CSS",      -1.0f},   // Tiangong
+    {"TIANHE",   -1.0f},
+    {"STARLINK",  5.5f},
+    {"ENVISAT",   3.0f},
+    {"R/B",       3.5f},   // spent rocket stages
+    {"COSMOS",    4.0f},
+    {"ONEWEB",    6.5f},
+  };
+  memset(c.magRules, 0, sizeof(c.magRules));
+  for (size_t i = 0; i < sizeof(SEED) / sizeof(SEED[0]) && i < SKY_MAG_RULES; i++)
+    c.magRules[i] = SEED[i];
+
+  // Anything unmatched is assumed faint, otherwise every cubesat at 400 km
+  // comes out around magnitude +1 and lands on the display.
+  c.magDefault = 6.5f;
 }
 
 static float clampf(float v, float lo, float hi) {
@@ -70,6 +96,12 @@ void cfgSanitize(SkyConfig& c) {
   if (c.sunSwitchDeg > 18) c.sunSwitchDeg = 18;
   if (c.syncHourUtc > 23)  c.syncHourUtc = 3;
   if (c.lang > 1) c.lang = 0;
+
+  for (uint8_t i = 0; i < SKY_MAG_RULES; i++) {
+    c.magRules[i].match[sizeof(c.magRules[i].match) - 1] = 0;
+    c.magRules[i].mag = clampf(c.magRules[i].mag, -6.0f, 12.0f);
+  }
+  c.magDefault = clampf(c.magDefault, -6.0f, 12.0f);
 }
 
 bool cfgLoad() {

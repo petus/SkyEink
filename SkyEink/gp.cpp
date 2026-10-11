@@ -19,6 +19,17 @@ namespace {
 // cache is simply ignored instead of being misread byte by byte.
 const char* CACHE = "/" FW_SLUG "/gp2.dat";
 const char* TMP   = "/" FW_SLUG "/gp2.tmp";
+const char* META  = "/" FW_SLUG "/gp2.meta";
+
+// Written next to the cache once a download completes.
+struct Meta {
+  uint32_t magic;
+  int32_t  fetchedAt;
+  int32_t  oldest;
+  uint16_t count;
+  uint16_t pad;
+};
+const uint32_t META_MAGIC = 0x534B4D31UL;   // "SKM1"
 
 hal::StoreFile outFile = nullptr;
 hal::StoreFile inFile  = nullptr;
@@ -299,17 +310,15 @@ int fetchGroup(const char* group, bool starlink, ProgressFn cb, uint8_t pct) {
 }  // namespace
 
 float guessStdMag(const char* name) {
-  // Intrinsic magnitude at 1000 km and a 90 degree phase angle.
-  if (strstr(name, "ISS"))       return -1.8f;
-  if (strstr(name, "CSS"))       return -1.0f;   // Tiangong
-  if (strstr(name, "TIANHE"))    return -1.0f;
-  if (strstr(name, "STARLINK"))  return  5.5f;
-  if (strstr(name, "ENVISAT"))   return  3.0f;
-  if (strstr(name, "R/B"))       return  3.5f;   // rocket bodies
-  if (strstr(name, "COSMOS"))    return  4.0f;
-  if (strstr(name, "ONEWEB"))    return  6.5f;
-  return 4.0f;
+  // The table lives in the settings, so it can be tuned from the web page
+  // without rebuilding. First match wins, which makes the order a priority.
+  for (uint8_t i = 0; i < SKY_MAG_RULES; i++) {
+    const char* m = cfg.magRules[i].match;
+    if (m[0] && strstr(name, m)) return cfg.magRules[i].mag;
+  }
+  return cfg.magDefault;
 }
+
 
 uint32_t cacheBytesNeeded() {
   return (uint32_t)cfg.maxObjects * sizeof(Rec);
@@ -383,6 +392,26 @@ int refresh(ProgressFn cb) {
   hal::storeRemove(CACHE);
   if (!hal::storeRename(TMP, CACHE)) { hal::storeRemove(TMP); return GP_ERR_STORE; }
 
+  // The companion record. Without it a cold start cannot tell how old the
+  // cache on the card is and would download it all over again.
+  {
+    Meta m;
+    m.magic     = META_MAGIC;
+    // hal::timeNow() reads the RTC, which is the authoritative clock here.
+    // time(nullptr) would have returned 1970 whenever the run took its time
+    // from the RTC without syncing, and the record would then claim the cache
+    // was decades old on the next cold start.
+    m.fetchedAt = (int32_t)hal::timeNow();
+    m.oldest    = (int32_t)oldest;
+    m.count     = nRecs;
+    m.pad       = 0;
+    hal::StoreFile f = hal::storeOpenWrite(META);
+    if (f) {
+      hal::storeWrite(f, &m, sizeof(m));
+      hal::storeClose(f);
+    }
+  }
+
   if (cb) cb(T(S_P_DONE), 100);
   return (int)nRecs;
 }
@@ -420,5 +449,27 @@ bool get(uint16_t index, Rec& out) {
 }
 
 time_t oldestEpoch() { return oldest ? oldest : rt.gpEpochOldest; }
+
+bool cacheInfo(time_t& fetchedAt, uint16_t& count, time_t& oldestOut) {
+  if (!hal::storeExists(CACHE) || !hal::storeExists(META)) return false;
+
+  Meta m;
+  hal::StoreFile f = hal::storeOpenRead(META);
+  if (!f) return false;
+  size_t n = hal::storeRead(f, &m, sizeof(m));
+  hal::storeClose(f);
+
+  if (n != sizeof(m) || m.magic != META_MAGIC || m.count == 0) return false;
+
+  // The record has to agree with the file it describes, otherwise one of the
+  // two is left over from an interrupted write.
+  size_t sz = hal::storeSize(CACHE);
+  if (sz / sizeof(Rec) != m.count) return false;
+
+  fetchedAt = (time_t)m.fetchedAt;
+  count     = m.count;
+  oldestOut = (time_t)m.oldest;
+  return true;
+}
 
 }  // namespace gp

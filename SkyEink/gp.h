@@ -54,6 +54,13 @@ bool     get(uint16_t index, Rec& out);
 // Oldest epoch in the cache, used to watch the data age.
 time_t   oldestEpoch();
 
+// When the cache was downloaded, how many objects it holds and the oldest
+// epoch in it. Stored next to the cache, so it survives a cold start with
+// the RTC memory wiped: after a reflash or a battery swap the device can
+// tell that yesterday's catalogue on the card is still good and skip an
+// eighty second download. Returns false when there is no usable cache.
+bool     cacheInfo(time_t& fetchedAt, uint16_t& count, time_t& oldest);
+
 // Intrinsic magnitude guessed from the name. Public for testing.
 float    guessStdMag(const char* name);
 

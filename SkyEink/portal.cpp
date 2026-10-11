@@ -42,6 +42,16 @@ const char PAGE_CSS[] PROGMEM =
   ".hint{font-size:12px;color:#777;margin:3px 0 0}"
   "button{width:100%;padding:13px;font-size:16px;border:0;border-radius:6px;"
   "background:#111;color:#fff;margin-top:6px}"
+  ".tabs{display:flex;gap:4px;margin:0 0 14px}"
+  ".tabs button{flex:1;padding:10px 4px;font-size:14px;margin:0;"
+  "background:#e2e2e2;color:#444;border-radius:6px 6px 0 0}"
+  ".tabs button.on{background:#111;color:#fff}"
+  ".pane{display:none}.pane.on{display:block}"
+  "table.mag{width:100%;border-collapse:collapse}"
+  "table.mag th{font-size:12px;color:#777;font-weight:400;text-align:left;"
+  "padding:0 4px 4px 0}"
+  "table.mag td{padding:0 4px 6px 0}"
+  "table.mag td.v{width:34%}"
   "</style>";
 
 // Shorthands, so that building the page stays readable.
@@ -74,7 +84,11 @@ void checkbox(String& h, const char* name, bool on, StrId label) {
 }
 
 void handleRoot() {
-  String h = "<!DOCTYPE html><html lang=";
+  String h;
+  // The page with all three tabs runs to roughly seven kilobytes. Reserving
+  // up front avoids a dozen reallocations while it is assembled.
+  h.reserve(9000);
+  h = "<!DOCTYPE html><html lang=";
   h += (i18nGet() == LANG_EN) ? "en" : "cs";
   h += "><head><meta charset=utf-8>"
        "<meta name=viewport content='width=device-width,initial-scale=1'>"
@@ -82,6 +96,25 @@ void handleRoot() {
   h += FPSTR(PAGE_CSS);
   h += "</head><body><h1>" FW_NAME " " FW_VERSION "</h1>"
        "<p class=sub>" FW_BOARD "</p><form method=POST action=/save>";
+
+  // Three tabs. Everything anyone has to touch to get the device running is
+  // on the first one; the other two are for tuning and can be ignored.
+  h += "<div class=tabs>";
+  static const StrId TABS[] = { W_TAB_BASIC, W_TAB_PASSES, W_TAB_MAG };
+  for (uint8_t i = 0; i < 3; i++) {
+    h += "<button type=button id=t";
+    h += i;
+    h += (i == 0) ? " class=on" : "";
+    h += " onclick='tab(";
+    h += i;
+    h += ")'>";
+    h += T(TABS[i]);
+    h += "</button>";
+  }
+  h += "</div>";
+
+  // ================================================== 1. basic
+  h += "<div class='pane on'>";
 
   // --- language first, so it is obvious where to switch it
   legend(h, W_LANG);
@@ -100,7 +133,9 @@ void handleRoot() {
   L(h, W_PASS);
   h += "<input name=pass type=password maxlength=64 placeholder='";
   h += T(W_PASS_PH);
-  h += "'></fieldset>";
+  h += "'>";
+  hint(h, W_WIFI_HINT);
+  h += "</fieldset>";
 
   // --- site
   legend(h, W_SITE);
@@ -151,6 +186,10 @@ void handleRoot() {
     h += "</p>";
   }
   h += "</fieldset>";
+  h += "</div>";
+
+  // ================================================== 2. passes
+  h += "<div class=pane>";
 
   // --- catalogue
   legend(h, W_CATALOG);
@@ -158,15 +197,19 @@ void handleRoot() {
   checkbox(h, "g2", cfg.groups & GRP_STATIONS, W_G_STATIONS);
   checkbox(h, "g4", cfg.groups & GRP_LAST30,   W_G_LAST30);
   checkbox(h, "g8", cfg.groups & GRP_STARLINK, W_G_STARLINK);
+  hint(h, W_GROUPS_HINT);
   hint(h, W_SL_HINT);
   L(h, W_SLMM);
   h += "<input name=slmm value='";
   h += String(cfg.slMinMeanMotion, 2);
   h += "'>";
+  hint(h, W_SLMM_HINT);
   L(h, W_MAXOBJ);
   h += "<input name=maxobj value='";
   h += String(cfg.maxObjects);
-  h += "'></fieldset>";
+  h += "'>";
+  hint(h, W_MAXOBJ_HINT);
+  h += "</fieldset>";
 
   // --- pass selection
   legend(h, W_SELECT);
@@ -178,15 +221,20 @@ void handleRoot() {
   L(h, W_MINEL);
   h += "<input name=minel value='";
   h += String(cfg.minElevDeg);
-  h += "'></div></div></fieldset>";
+  h += "'></div></div>";
+  hint(h, W_MAGLIM_HINT);
+  hint(h, W_MINEL_HINT);
+  h += "</fieldset>";
 
   // --- wake-ups
   legend(h, W_WAKE);
   checkbox(h, "ev", cfg.eventWakes, W_EVENTS);
+  hint(h, W_EVENTS_HINT);
   L(h, W_MAXEV);
   h += "<input name=maxev value='";
   h += String(cfg.maxEvents);
   h += "'>";
+  hint(h, W_MAXEV_HINT);
   h += "<div class=row><div>";
   L(h, W_QUIET_FROM);
   char mm[4];
@@ -205,6 +253,39 @@ void handleRoot() {
   h += "'></div></div>";
   hint(h, W_QUIET_HINT);
   h += "</fieldset>";
+  h += "</div>";
+
+  // ================================================== 3. brightness
+  h += "<div class=pane>";
+  legend(h, W_MAG_TITLE);
+  hint(h, W_MAG_HINT);
+
+  h += "<table class=mag><tr><th>";
+  h += T(W_MAG_MATCH);
+  h += "</th><th>";
+  h += T(W_MAG_VALUE);
+  h += "</th></tr>";
+  for (uint8_t i = 0; i < SKY_MAG_RULES; i++) {
+    h += "<tr><td><input name=m";
+    h += i;
+    h += " maxlength=13 value='";
+    h += cfg.magRules[i].match;
+    h += "'></td><td class=v><input name=v";
+    h += i;
+    h += " value='";
+    h += String(cfg.magRules[i].mag, 1);
+    h += "'></td></tr>";
+  }
+  h += "</table>";
+
+  L(h, W_MAG_DEFAULT);
+  h += "<input name=magdef value='";
+  h += String(cfg.magDefault, 1);
+  h += "'>";
+  hint(h, W_MAG_DEFAULT_HINT);
+  hint(h, W_MAG_EXAMPLES);
+  h += "</fieldset>";
+  h += "</div>";
 
   // The browser fills in its own clock. This is the last resort on networks
   // that block both NTP and outgoing HTTPS.
@@ -212,8 +293,14 @@ void handleRoot() {
        "<button type=submit>";
   h += T(W_SAVE);
   h += "</button></form>"
-       "<script>document.getElementById('now').value="
-       "Math.floor(Date.now()/1000)</script></body></html>";
+       "<script>"
+       "document.getElementById('now').value=Math.floor(Date.now()/1000);"
+       "function tab(n){"
+       "var p=document.querySelectorAll('.pane'),b=document.querySelectorAll('.tabs button');"
+       "for(var i=0;i<p.length;i++){"
+       "p[i].className=(i==n)?'pane on':'pane';"
+       "b[i].className=(i==n)?'on':'';}}"
+       "</script></body></html>";
 
   srv->send(200, "text/html; charset=utf-8", h);
 }
@@ -263,6 +350,20 @@ void handleSave() {
   if (has("maxobj")) cfg.maxObjects = (uint16_t)arg("maxobj").toInt();
   if (has("maglim")) cfg.magLimit = arg("maglim").toFloat();
   if (has("minel"))  cfg.minElevDeg = (uint8_t)arg("minel").toInt();
+
+  // Brightness table. An empty name clears the slot.
+  for (uint8_t i = 0; i < SKY_MAG_RULES; i++) {
+    char nm[4], nv[4];
+    snprintf(nm, sizeof(nm), "m%u", i);
+    snprintf(nv, sizeof(nv), "v%u", i);
+    if (has(nm)) {
+      strncpy(cfg.magRules[i].match, arg(nm).c_str(),
+              sizeof(cfg.magRules[i].match) - 1);
+      cfg.magRules[i].match[sizeof(cfg.magRules[i].match) - 1] = 0;
+    }
+    if (has(nv)) cfg.magRules[i].mag = arg(nv).toFloat();
+  }
+  if (has("magdef")) cfg.magDefault = arg("magdef").toFloat();
 
   cfg.eventWakes = has("ev");
   if (has("maxev")) cfg.maxEvents = (uint8_t)arg("maxev").toInt();
@@ -331,7 +432,16 @@ bool run(uint16_t timeoutSec) {
   uint32_t t0 = millis();
   while (millis() - t0 < (uint32_t)timeoutSec * 1000) {
     srv->handleClient();
-    if (saved) { delay(800); break; }
+
+    // Once the settings are stored the device restarts anyway, so tearing the
+    // access point down first only wastes time. Doing it the long way also
+    // made the WiFi driver complain with "netstack cb reg failed", because
+    // the default interface handler gets registered twice when the radio is
+    // stopped and started again inside one boot.
+    if (saved) {
+      delay(800);       // let the browser receive the confirmation page
+      ESP.restart();
+    }
     delay(5);
   }
 

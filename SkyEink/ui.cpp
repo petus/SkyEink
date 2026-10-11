@@ -284,7 +284,13 @@ uint8_t battPercent(float v) {
 
 const char* compass(int16_t az) {
   while (az < 0) az += 360;
-  return Tpart(S_COMPASS, (uint8_t)(((az * 2 + 45) / 90) % 16));
+  az %= 360;
+  // One sector is 22.5 degrees, so the index is round(az / 22.5). Written in
+  // integer arithmetic that is (az * 2 + 22) / 45. The earlier version used
+  // 90 in the divisor, which is round(az / 45): only eight distinct values
+  // into a sixteen entry table, so everything except north came out wrong.
+  // True east printed as NE and true west as SE.
+  return Tpart(S_COMPASS, (uint8_t)(((az * 2 + 22) / 45) % 16));
 }
 
 void drawHeader(const layout::Frame& f, const char* title, time_t now) {

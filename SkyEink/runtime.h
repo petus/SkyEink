@@ -54,6 +54,7 @@ struct SkyRuntime {
   time_t   lastNtpAt;
   time_t   lastNetOkAt;
   uint8_t  netFailStreak;
+  uint8_t  ntpFailStreak;      // consecutive NTP failures
   bool     storeFull;          // last download ran out of storage
 
   uint32_t bootCount;

@@ -18,6 +18,26 @@ typedef void (*ProgressFn)(const char* stage, uint8_t pct);
 // rt.passes. Returns how many were found, -1 on an element cache error.
 int compute(time_t around, ProgressFn cb);
 
+// Stores the computed list on the card, and reads it back.
+//
+// The list lives in RTC memory, which a cold start wipes. Without this, every
+// reflash, battery swap or brownout costs a full minute of recomputation for
+// a night that has already been worked out. The file carries a fingerprint of
+// the settings the list was computed with, so changing the magnitude limit or
+// the site coordinates invalidates it.
+void savePasses();
+bool loadPasses(time_t now);
+
+// Stores the computed list on the card, and reads it back.
+//
+// The list lives in RTC memory, which a cold start wipes. Without this, every
+// reflash, battery swap or brownout costs a full minute of recomputation for
+// a night that has already been worked out. The file carries a fingerprint of
+// the settings the list was computed with, so changing the magnitude limit or
+// the site coordinates invalidates it.
+void savePasses();
+bool loadPasses(time_t now);
+
 // Ground track drawing on the pass detail screen. trackBegin() locates the
 // object in the cache once, then trackAt() is called per point. Without the
 // split, every point would rescan the whole cache.
