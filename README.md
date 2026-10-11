@@ -10,19 +10,19 @@ Vytvořeno chiptron.cz a Claude AI.
 
 ## Co to je
 
-Že dnes v noci poletí ISS, se dá zjistit na Heavens-Above za deset sekund. Jenže to musíte vědět, že se máte podívat, a pak ještě potřebujete zjistit, jestli nebude zataženo.
+Že dnes v noci poletí ISS, se dá zjistit na Heavens-Above za deset sekund. Jenže to musíte vědět, že se máte podívat, a pak ještě zjistit, jestli nebude zataženo.
 
-SkyEink to udělá sám. Visí na stěně nebo je položený na poličce, jednou denně se probudí, spočítá co bude v noci vidět a zbytek času spí. Probudí se jen tehdy, když má nastat nějaká událost.
+SkyEink to udělá sám. Visí na stěně, jednou denně se probudí, spočítá noc a zbytek času spí.
 
 ### Přelety družic
 
-Do seznamu se nedostane každá družice nad obzorem, ale jen ta, kterou je opravdu vidět. Musí platit tři věci naráz:
+Do seznamu se dostane jen přelet, který jde opravdu vidět. Musí platit tři věci naráz:
 
 - družice je výš než nastavené minimum,
 - je osvětlená Sluncem, zatímco pozorovatel je už ve tmě,
 - odhad jasnosti je pod nastavenou mezí.
 
-Bez toho posledního filtru dostanete stovky položek, ze kterých je okem vidět pět.
+Bez těchhle podmínek dostanete stovky položek a okem z nich uvidíte pět.
 
 ### Oblačnost, teplota, srážky
 
@@ -44,7 +44,9 @@ Obrazovka se přepíná sama podle výšky Slunce, nic nemačkáte.
 
 **Stav.** Naskočí sama při poruše. Stáří dat, napětí a stav nabití, časové pásmo, volné místo na kartě.
 
-Na každé obrazovce je dole trvalá lišta se stářím dat. Displej, který ukazuje stará data a netváří se, že jsou čerstvá, je použitelný. Ten druhý ne.
+Na každé obrazovce je dole lišta se stářím dat a časem další aktualizace, takže je hned vidět, když se data dlouho neobnovila.
+
+Hodiny v záhlaví neběží. ePaper se překresluje jen při změně, takže ukazuje čas posledního překreslení.
 
 ---
 
@@ -70,7 +72,7 @@ Karta není povinná. Bez ní se data uloží do interní flash, ale s kartou je
 
 ### 1. Stáhněte firmware
 
-Na GitHubu v sekci **Releases** si stáhněte soubor **`skyeink_vX.bin`**. Je to jeden soubor, nic se nerozbaluje.
+Na GitHubu v sekci **Releases** si stáhněte soubor **`skyeink.bin`**. Je to jeden soubor, nic se nerozbaluje.
 
 ### 2. Připojte desku
 
@@ -84,7 +86,7 @@ Musíte použít **Chrome nebo Edge**. Firefox a Safari neumí Web Serial, tedy 
 
 ### 4. Nahrajte
 
-1. Vyberte stažený soubor `skyeink_vX.bin`.
+1. Vyberte stažený soubor `skyeink.bin`.
 2. Klikněte na připojení. Prohlížeč zobrazí seznam sériových portů.
 3. Vyberte port desky a potvrďte.
 4. Spusťte flashování a počkejte, než doběhne.
@@ -99,6 +101,8 @@ Po nahrání se deska restartuje a naskočí konfigurační přístupový bod. N
 2. Otevřete v prohlížeči **http://192.168.4.1**.
 3. Vyplňte jazyk, WiFi a hlavně **souřadnice stanoviště**.
 4. Uložte. Deska se restartuje a začne stahovat data.
+
+Stránka má tři záložky: základní nastavení, přelety a tabulku jasnosti. V tabulce si upravíte, jakou magnitudu firmware přiřadí jednotlivým typům objektů. U každé položky je krátká nápověda česky i anglicky. Nastavení se ukládá do flash a po resetu zůstává.
 
 Přístupový bod se sám vypne po pěti minutách. Heslo se odvozuje z MAC adresy, takže je pro každý kus jiné a po restartu se nemění.
 
@@ -175,7 +179,7 @@ SkyEink/
 
 Hardware je oddělený schválně a důsledně. **Žádný soubor kromě `board_inkplate5v2.cpp` neincluduje hlavičku od desky.** Port na jiný panel znamená napsat další takový soubor a přepnout define v `board_config.h`.
 
-Odstíny jsou sémantické, aplikace kreslí `INK_MID`, ne číslo úrovně. A rozvržení se počítá z rozměru panelu, takže ve vykreslování není jediná souřadnice v pixelech.
+Drží to na dvou věcech. Odstíny jsou sémantické, aplikace kreslí `INK_MID`, ne číslo úrovně. A rozvržení se počítá z rozměru panelu, takže ve vykreslování není jediná souřadnice v pixelech.
 
 ### Jak se hledají přelety
 
@@ -185,17 +189,48 @@ Katalog má stovky objektů a jedna propagace SGP4 stojí na ESP32 kolem tří m
 
 **Vyhledávač z knihovny.** Na to, co filtrem projde, se pustí `Sgp4::nextpass()`. Skáče po oběžných dobách a maximum elevace hledá Brentovou metodou.
 
-### Nástroje
+**Oříznutí na viditelnou část.** Přelet se projde po krocích a zůstane z něj jen úsek, kdy je družice osvětlená a Slunce je u pozorovatele aspoň 6° pod obzorem (občanský soumrak). Magnituda se počítá v nejvyšším bodě tohoto úseku. Družice, která vrcholí ve stínu Země, by jinak dostala jasnost, kterou nikdy neuvidíte.
 
-Skripty v kořeni projektu, spouštějí se ručně před commitem.
+Výsledek jsem porovnal s Heavens-Above. Večerní přelet ISS: SkyEink 19:39, maximum 65°, magnituda -3,6. Heavens-Above 19:41, 65°, -3,5.
 
-| Skript | K čemu |
-|---|---|
-| `tools_i18n.py` | generuje `i18n.h/.cpp` a měří texty proti šířce na displeji |
-| `tools_textwidth.py` | změří libovolný řetězec podle skutečných dat fontů |
-| `tools_collisions.py` | hledá proměnné, které kolidují s makry knihoven |
-| `tools_braces.py` | kontroluje párování závorek |
-| `tools/OveritSkyEink` | sketch, který ověří převod epochy v RTC |
+**Cache.** Elementy i spočítané přelety se ukládají na kartu. Přelety mají otisk nastavení, takže se přepočítají jen po stažení nových elementů nebo po změně nastavení. Probuzení kvůli počasí nebo přeletu trvá kolem 16 sekund.
+
+### Nástroje pro vývoj
+
+**Pokud kód jen překládáte a nahráváte, tahle část se vás netýká.** Skripty
+nejsou součástí sestavení, Arduino IDE je nespouští a nic bez nich nechybí.
+
+Jsou pro toho, kdo do kódu sahá. Vyžadují Python 3 a spouštějí se ručně
+z kořene projektu.
+
+| Skript | K čemu | Kdy ho spustit |
+|---|---|---|
+| `tools_i18n.py` | **generuje** `i18n.h` a `i18n.cpp` z tabulky textů a rovnou měří, jestli se české i anglické znění vejde na displej | vždy po změně jakéhokoli textu, jinak se změna nikam nepropíše |
+| `tools_collisions.py` | hledá proměnné, které se jmenují stejně jako makro některé knihovny | po přidání nových proměnných |
+| `tools_braces.py` | kontroluje párování závorek, ignoruje komentáře a řetězce | po větší úpravě |
+| `tools_textwidth.py` | změří libovolný řetězec podle skutečných dat fontů | když přidáváte text na displej |
+| `tools/OveritSkyEink` | samostatný skeč, který ověří převod epochy v RTC | při podezření na posunutý čas |
+
+`tools_i18n.py` je jediný, který soubory mění. Ostatní jen kontrolují a nic
+nepřepisují.
+
+### Na co si dát pozor při úpravách
+
+Poznámky pro toho, kdo bude v kódu něco měnit. Všechny tyhle věci se projevily jako něco jiného, než čím byly.
+
+**`getStreamPtr()` vrací surová data.** Při `Transfer-Encoding: chunked` jsou v proudu i rámce s délkou v hexu. Parser JSON přečte `3ba` jako číslo, vrátí `Ok` a dokument je prázdný. Dekódování umí jen `writeToStream()` a `getString()`.
+
+**RTC převádí epochu přes `localtime()` a `mktime()`.** Round trip vyjde jen tehdy, když je `TZ` při zápisu i čtení stejná, a `configTime()` si `TZ` přepisuje. Řeší to třída `TzUtc`.
+
+**Makra knihoven.** `sgp4unit.h` definuje `pi`, `Arduino.h` definuje `F`, `bit` a `abs`, InkplateLibrary šedesát dalších včetně `ON`, `OFF`, `DEC` a `nop`. Proměnná se stejným jménem se tiše rozvine a překlad spadne na místě, které s příčinou nesouvisí.
+
+**Dvě verze SdFat v InkplateLibrary.** Starší má `blocksPerCluster()`, novější `bytesPerCluster()`. Metodu vybírá dvojice přetížení.
+
+**`getTextBounds()` vrací obálku pixelů, ne krok kurzoru.** Mezera nemá žádné pixely, takže vrací nulu a text se slije dohromady. Šířka se počítá z `xAdvance`.
+
+**Watchdog.** Výpočet přeletů běží desítky sekund. Bez krátkého přerušení se nedostane ke slovu idle task a deska se restartuje.
+
+**`timegm()` a `strptime()` nejsou na ESP32 zaručené.** Proto vlastní `astro::tmToUtc()` a ruční rozbor hlavičky `Date`.
 
 ---
 
@@ -203,7 +238,7 @@ Skripty v kořeni projektu, spouštějí se ručně před commitem.
 
 **Celestrak** dodává orbitální elementy. Od března 2026 vynucuje jedno stažení na jednu aktualizaci dat, druhý dotaz vrátí 403 a opakované pokusy vedou k zablokování IP. Firmware proto stahuje nejvýš jednou denně a po 403 si nechá stará data.
 
-V červenci 2026 došly pětimístné katalogové numera. Nové objekty mají šestimístná a pro ta Celestrak formát TLE neposkytuje, takže se stahuje CSV a dvouřádkové elementy se skládají přímo v desce.
+V červenci 2026 došla pětimístná katalogová čísla. Nové objekty mají šestimístná a pro ta Celestrak formát TLE neposkytuje, takže se stahuje CSV a dvouřádkové elementy se skládají přímo v desce.
 
 **Open-Meteo** dodává počasí. Bez klíče a bez registrace, data jsou pod licencí CC BY 4.0 a zdarma pro nekomerční použití. U čehokoli publikovaného je potřeba uvést zdroj.
 
@@ -217,31 +252,29 @@ V červenci 2026 došly pětimístné katalogové numera. Nové objekty mají š
 
 | Položka | Denně |
 |---|---|
-| Ranní synchronizace a výpočet | ~0,9 mAh |
-| Podvečerní obnova počasí | ~0,3 mAh |
-| Událostní probuzení k přeletům | ~1,0 mAh |
-| Deep sleep při 18 µA | ~0,45 mAh |
-| **Celkem** | **~2,7 mAh** |
+| Firmware (synchronizace, výpočet, probuzení k přeletům, deep sleep) | ~4 mAh |
+| Napájecí LED na desce | ~10 mAh |
 
-Napájecí LED na desce je připojená napevno přes rezistor 1 kΩ, není řízená z GPIO a odebírá kolem 0,4 mA. To je 10 mAh denně, tedy čtyřnásobek celého firmwaru. Kdo chce z akumulátoru vyždímat maximum, musí odpájet R35.
+Napájecí LED na desce je připojená napevno přes rezistor 1 kΩ, není řízená z GPIO a odebírá kolem 0,4 mA. To je víc než dvojnásobek celého firmwaru. Kdo chce z akumulátoru vyždímat maximum, musí odpájet R35.
 
 ---
 
 ## Výhody
 
-**Dlouhá výdrž.** Firmware sám spotřebuje necelé tři mAh denně. S akumulátorem 2000 mAh a odpájenou napájecí LED to jsou měsíce na jedno nabití. ePaper drží obraz i bez napájení, takže se překresluje jen tehdy, když se něco změní.
+**Dlouhá výdrž.** Firmware sám spotřebuje zhruba 4 mAh denně. S akumulátorem 2000 mAh to jsou měsíce na jedno nabití, s odpájenou napájecí LED ještě víc. ePaper drží obraz i bez napájení, takže se překresluje jen tehdy, když se něco změní.
 
-**Open source hardware i software.** Inkplate má veřejné schéma i podklady pro desku, firmware je pod MIT licencí. Můžete si obojí prohlédnout, upravit a postavit znovu. Nic není zamčené.
+**Open source hardware i software.** Inkplate má veřejné schéma i podklady pro desku, firmware je pod MIT licencí. Obojí si můžete prohlédnout a upravit.
 
-**Prostor pro komunitu.** Hardware je oddělený do jediného souboru, texty jsou v generované tabulce a rozvržení se počítá z rozměru panelu. Přidat další jazyk, port na jiný ePaper nebo novou obrazovku je proto práce na jeden soubor, ne přepis celého projektu. Pull requesty vítám.
+**Snadné úpravy.** Hardware je oddělený do jediného souboru, texty jsou v generované tabulce a rozvržení se počítá z rozměru panelu. Další jazyk, port na jiný ePaper nebo nová obrazovka znamená úpravu jednoho souboru.
 
 ---
 
 ## Omezení
 
 - Osm odstínů šedi a částečná obnova se na Inkplate vylučují, takže hlavní obrazovky jedou plnou obnovou.
-- Panel má provozní rozsah 0 až 50 °C.
+- Panel má provozní rozsah 0 až 50 °C. Na parapet v zimě to není.
 - Bez OTA. Aktualizace se nahrává přes USB.
+- Přerušení z RTC na GPIO39 není využité. Klasický ESP32 neumí u `ext1` režim „kterýkoli pin v nule" a oba signály jsou aktivní v nule.
 - Verze 0.1.0. Funguje, ale je čerstvá.
 
 ---
